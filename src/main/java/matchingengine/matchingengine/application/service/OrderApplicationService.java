@@ -1,6 +1,7 @@
 package matchingengine.matchingengine.application.service;
 
 import matchingengine.matchingengine.application.port.in.CancelOrderUseCase;
+import matchingengine.matchingengine.application.port.in.GetOrderBookUseCase;
 import matchingengine.matchingengine.application.port.in.SubmitOrderUseCase;
 import matchingengine.matchingengine.application.port.out.OrderBookRepositoryPort;
 import matchingengine.matchingengine.application.port.out.OrderRepositoryPort;
@@ -11,9 +12,10 @@ import matchingengine.matchingengine.domain.Trade;
 import matchingengine.matchingengine.exception.OrderNotFoundException;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-public class OrderApplicationService implements SubmitOrderUseCase, CancelOrderUseCase {
+public class OrderApplicationService implements SubmitOrderUseCase, CancelOrderUseCase, GetOrderBookUseCase {
 
     private final MatchingEngine matchingEngine;
     private final OrderRepositoryPort orderRepository;
@@ -48,5 +50,10 @@ public class OrderApplicationService implements SubmitOrderUseCase, CancelOrderU
         }
 
         return order;
+    }
+
+    @Override
+    public Optional<OrderBook> getOrderBook(String instrument) {
+        return orderBookRepository.findByInstrument(instrument);
     }
 }

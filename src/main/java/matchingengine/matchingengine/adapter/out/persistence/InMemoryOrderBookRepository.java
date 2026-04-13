@@ -5,6 +5,7 @@ import matchingengine.matchingengine.domain.OrderBook;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 public class InMemoryOrderBookRepository implements OrderBookRepositoryPort {
 
@@ -13,5 +14,10 @@ public class InMemoryOrderBookRepository implements OrderBookRepositoryPort {
     @Override
     public OrderBook findOrCreate(String instrument) {
         return store.computeIfAbsent(instrument, OrderBook::new);
+    }
+
+    @Override
+    public Optional<OrderBook> findByInstrument(String instrument) {
+        return Optional.ofNullable(store.get(instrument));
     }
 }
