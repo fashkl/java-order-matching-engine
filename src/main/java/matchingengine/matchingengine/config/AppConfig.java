@@ -10,8 +10,10 @@ import matchingengine.matchingengine.domain.MatchingEngine;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 @Configuration
+@EnableAsync
 public class AppConfig {
 
     @Bean

@@ -72,6 +72,23 @@ class TradeEventPublishingTest {
     }
 
     @Test
+    void eachTradeExecutedEvent_hasUniqueEventId() {
+        service.submit(sell("100", "1"));
+        service.submit(sell("101", "1"));
+
+        List<DomainEvent> capturedEvents = new ArrayList<>();
+        doAnswer(inv -> { capturedEvents.add(inv.getArgument(0)); return null; })
+                .when(eventPublisher).publish(any());
+
+        service.submit(buy("102", "2")); // sweeps both levels → 2 events
+
+        assertEquals(2, capturedEvents.size());
+        var id1 = ((TradeExecutedEvent) capturedEvents.get(0)).eventId();
+        var id2 = ((TradeExecutedEvent) capturedEvents.get(1)).eventId();
+        assertNotEquals(id1, id2, "Each event must have a unique eventId");
+    }
+
+    @Test
     void tradeExecutedEvent_containsCorrectTradeData() {
         List<DomainEvent> capturedEvents = new ArrayList<>();
         doAnswer(inv -> { capturedEvents.add(inv.getArgument(0)); return null; })
@@ -84,6 +101,8 @@ class TradeEventPublishingTest {
         assertInstanceOf(TradeExecutedEvent.class, capturedEvents.get(0));
 
         var event = (TradeExecutedEvent) capturedEvents.get(0);
+        assertNotNull(event.eventId());
+        assertNotNull(event.occurredAt());
         assertEquals(new BigDecimal("100"), event.trade().getPrice());
         assertEquals(new BigDecimal("5"), event.trade().getQuantity());
         assertEquals("BTC-USD", event.trade().getInstrument());

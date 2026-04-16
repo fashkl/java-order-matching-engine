@@ -53,7 +53,7 @@ public class OrderApplicationService implements SubmitOrderUseCase, CancelOrderU
         }
 
         // Publish events after releasing the lock — no I/O inside the critical section
-        trades.forEach(trade -> eventPublisher.publish(new TradeExecutedEvent(trade)));
+        trades.forEach(trade -> eventPublisher.publish(TradeExecutedEvent.of(trade)));
 
         return trades;
     }
