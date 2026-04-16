@@ -261,7 +261,7 @@ src/main/java/matchingengine/matchingengine/
 | 3 | REST API (`POST /orders`, `DELETE /orders/{id}`, `GET /orderbook/{instrument}`) + Swagger | ✅ Done |
 | 4 | Concurrency — per-instrument `ReentrantLock`, `ConcurrentHashMap`, defensive open-check | ✅ Done |
 | 5 | Domain events — `sealed DomainEvent`, `TradeExecutedEvent` with metadata (`eventId`, `occurredAt`), `@Async @TransactionalEventListener` audit listener | ✅ Done |
-| 6 | Kafka event log — publish `TradeExecutedEvent` to Kafka topic as durable append-only log | 🔄 In Progress |
+| 6 | Kafka event log — `@Async @EventListener` publishes `TradeExecutedEvent` to `trade-executed` topic; instrument as partition key | ✅ Done |
 | 7 | Persistence (JPA/WAL) | ⏭ Deferred to advanced version |
 
 ---
@@ -283,6 +283,48 @@ public class JpaOrderRepository implements OrderRepositoryPort {
 ```
 
 **For trades**, the right pattern is already in place: `TradeAuditListener` runs `@Async` after every fill. Add a `TradePersistenceListener` alongside it to write trades to a DB or publish to Kafka — zero changes to the engine.
+
+### Kafka event log (Phase 6)
+
+Every fill publishes a `TradeExecutedEvent` to the `trade-executed` Kafka topic via `TradeKafkaPublisher`:
+
+```
+match() returns trades
+    │
+    └── publish TradeExecutedEvent (per fill)
+            │
+            ├── TradeAuditListener      @Async — logs fill
+            └── TradeKafkaPublisher     @Async — sends JSON to Kafka
+```
+
+**Why `@Async`?** Both listeners run on a background thread pool. The HTTP response returns as soon as matching is done — Kafka I/O never touches the order submission latency.
+
+**Why instrument as the partition key?** All trades for `BTC-USD` land on the same partition, preserving time-ordering per order book. Downstream consumers (read models, risk systems) can process each instrument's trade stream independently.
+
+**Message payload:**
+```json
+{
+  "eventId":    "uuid — unique per event (idempotency key)",
+  "occurredAt": "ISO instant",
+  "tradeId":    "uuid",
+  "instrument": "BTC-USD",
+  "buyOrderId": "uuid",
+  "sellOrderId":"uuid",
+  "price":      "45000.00",
+  "quantity":   "1.5",
+  "executedAt": "ISO instant"
+}
+```
+
+**Configuration** (`application.yaml`):
+```yaml
+spring.kafka.bootstrap-servers: localhost:9092
+kafka.topics.trade-executed: trade-executed
+```
+
+**Tests** use `@EmbeddedKafka` — no external broker required to run the test suite.
+
+---
 
 ### Advanced version (coming next)
 

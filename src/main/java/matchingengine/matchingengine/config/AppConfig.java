@@ -1,5 +1,6 @@
 package matchingengine.matchingengine.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import matchingengine.matchingengine.adapter.out.eventbus.SpringDomainEventPublisher;
@@ -23,6 +24,11 @@ public class AppConfig {
                         .title("Order Matching Engine API")
                         .description("Price-time priority limit order matching engine")
                         .version("0.0.1-SNAPSHOT"));
+    }
+
+    @Bean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper();
     }
 
     @Bean
