@@ -256,12 +256,13 @@ src/main/java/matchingengine/matchingengine/
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Core domain: Order, Trade, OrderBook, MatchingEngine | ✅ Done |
-| 2 | Order management service + hexagonal architecture | ✅ Done |
-| 3 | REST API + Swagger | ✅ Done |
-| 4 | Concurrency — per-instrument `ReentrantLock` | ✅ Done |
-| 5 | Domain events — `TradeExecutedEvent`, async audit listener | ✅ Done |
-| 6 | Persistence | ⏭ Deferred — see below |
+| 1 | Core domain: `Order`, `Trade`, `OrderBook`, `MatchingEngine` | ✅ Done |
+| 2 | Order management service + hexagonal architecture (ports & adapters) | ✅ Done |
+| 3 | REST API (`POST /orders`, `DELETE /orders/{id}`, `GET /orderbook/{instrument}`) + Swagger | ✅ Done |
+| 4 | Concurrency — per-instrument `ReentrantLock`, `ConcurrentHashMap`, defensive open-check | ✅ Done |
+| 5 | Domain events — `sealed DomainEvent`, `TradeExecutedEvent` with metadata (`eventId`, `occurredAt`), `@Async @TransactionalEventListener` audit listener | ✅ Done |
+| 6 | Kafka event log — publish `TradeExecutedEvent` to Kafka topic as durable append-only log | 🔄 In Progress |
+| 7 | Persistence (JPA/WAL) | ⏭ Deferred to advanced version |
 
 ---
 
