@@ -11,6 +11,7 @@ A financial limit order matching engine built with Java 21 and Spring Boot 4. Im
 - [API Reference](#api-reference)
 - [Project Structure](#project-structure)
 - [Implementation Phases](#implementation-phases)
+- [Extending the Engine](#extending-the-engine)
 
 ---
 
@@ -21,24 +22,26 @@ The project follows **Hexagonal Architecture (Ports and Adapters)**:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Adapters (in)                        │
-│               REST Controllers / DTOs                       │
+│         REST Controllers · Event Listeners                  │
 ├─────────────────────────────────────────────────────────────┤
 │                    Application Layer                        │
 │         Use Case Interfaces (Ports) + Service               │
 ├─────────────────────────────────────────────────────────────┤
 │                      Domain Layer                           │
 │     Order · Trade · OrderBook · MatchingEngine              │
+│     DomainEvent · DomainEventPublisher                      │
 ├─────────────────────────────────────────────────────────────┤
 │                    Adapters (out)                           │
-│           In-Memory Repositories (swappable to JPA)         │
+│     In-Memory Repositories · Spring Event Bus              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **Key design decisions:**
 - The domain layer has **zero framework dependencies** — pure Java
 - The application service depends only on port interfaces, never on concrete adapters
-- Swapping persistence (in-memory → JPA) only requires a new outbound adapter — no changes to domain or application code
+- Swapping persistence (in-memory → JPA or Kafka) only requires a new outbound adapter — no changes to domain or application code
 - `MatchingEngine` is **stateless** — takes an `Order` and `OrderBook`, returns a list of `Trade` objects
+- `DomainEvent` is a `sealed interface` — the compiler enforces that all event types are handled
 
 ### Matching Algorithm
 
@@ -48,6 +51,20 @@ Price-time priority (FIFO):
 3. Within the same price, the **oldest resting order fills first**
 4. Trade executes at the **resting order's price** (passive side sets the price)
 5. Any unfilled remainder rests on the book
+
+### Event Flow
+
+```
+submit(order)
+    │
+    ├── [lock] match() → List<Trade>
+    └── [unlock]
+        │
+        └── publish TradeExecutedEvent (per fill)
+                │
+                ├── TradeAuditListener   → logs fill (async)
+                └── (add more listeners without touching the engine)
+```
 
 ---
 
@@ -193,7 +210,12 @@ src/main/java/matchingengine/matchingengine/
 │   ├── OrderBook.java               # TreeMap<Price, Deque<Order>> per side
 │   ├── MatchingEngine.java          # Stateless matching algorithm
 │   ├── Side.java                    # BUY | SELL
-│   └── OrderStatus.java             # NEW | PARTIALLY_FILLED | FILLED | CANCELLED
+│   ├── OrderStatus.java             # NEW | PARTIALLY_FILLED | FILLED | CANCELLED
+│   ├── events/
+│   │   ├── DomainEvent.java         # sealed interface — compiler-enforced event types
+│   │   └── TradeExecutedEvent.java  # record: eventId, occurredAt, trade
+│   └── ports/
+│       └── DomainEventPublisher.java  # outbound port — domain owns the abstraction
 │
 ├── application/
 │   ├── port/in/                     # Inbound ports (use case interfaces)
@@ -204,19 +226,25 @@ src/main/java/matchingengine/matchingengine/
 │   │   ├── OrderRepositoryPort.java
 │   │   └── OrderBookRepositoryPort.java
 │   └── service/
-│       └── OrderApplicationService.java   # Implements all use cases
+│       └── OrderApplicationService.java   # implements use cases, per-instrument locking
 │
 ├── adapter/
-│   ├── in/rest/                     # Inbound: HTTP
-│   │   ├── OrderController.java
-│   │   ├── GlobalExceptionHandler.java
-│   │   └── dto/                     # Request/response DTOs
-│   └── out/persistence/             # Outbound: storage (in-memory for now)
-│       ├── InMemoryOrderRepository.java
-│       └── InMemoryOrderBookRepository.java
+│   ├── in/
+│   │   ├── rest/                    # Inbound: HTTP
+│   │   │   ├── OrderController.java
+│   │   │   ├── GlobalExceptionHandler.java
+│   │   │   └── dto/
+│   │   └── event/                   # Inbound: domain events
+│   │       └── TradeAuditListener.java  # @Async @TransactionalEventListener
+│   └── out/
+│       ├── persistence/             # Outbound: storage (in-memory)
+│       │   ├── InMemoryOrderRepository.java
+│       │   └── InMemoryOrderBookRepository.java
+│       └── eventbus/                # Outbound: event publishing
+│           └── SpringDomainEventPublisher.java
 │
 ├── config/
-│   └── AppConfig.java               # @Configuration — wires all beans
+│   └── AppConfig.java               # @Configuration @EnableAsync — wires all beans
 │
 └── exception/
     └── OrderNotFoundException.java
@@ -231,8 +259,36 @@ src/main/java/matchingengine/matchingengine/
 | 1 | Core domain: Order, Trade, OrderBook, MatchingEngine | ✅ Done |
 | 2 | Order management service + hexagonal architecture | ✅ Done |
 | 3 | REST API + Swagger | ✅ Done |
-| 4 | Concurrency & thread safety (per-instrument locking) | Pending |
-| 5 | Events & observability (Spring ApplicationEvents) | Pending |
-| 6 | Persistence (Spring Data JPA, startup replay) | Pending |
+| 4 | Concurrency — per-instrument `ReentrantLock` | ✅ Done |
+| 5 | Domain events — `TradeExecutedEvent`, async audit listener | ✅ Done |
+| 6 | Persistence | ⏭ Deferred — see below |
 
-See [`docs/ORDER_MATCHING_ENGINE_PRD.md`](docs/ORDER_MATCHING_ENGINE_PRD.md) for the full implementation plan.
+---
+
+## Extending the Engine
+
+### Why persistence is deferred
+
+The matching hot path is intentionally free of I/O. Adding synchronous DB writes inside the matching lock would introduce latency for every order submission — the opposite of what a matching engine needs.
+
+**The port/adapter pattern makes swapping trivial.** To add JPA persistence for orders, implement `OrderRepositoryPort` with a JPA adapter — the `OrderApplicationService` and domain don't change at all:
+
+```java
+// adapter/out/persistence/JpaOrderRepository.java
+public class JpaOrderRepository implements OrderRepositoryPort {
+    // Spring Data JPA implementation
+}
+// Then swap the bean in AppConfig — done.
+```
+
+**For trades**, the right pattern is already in place: `TradeAuditListener` runs `@Async` after every fill. Add a `TradePersistenceListener` alongside it to write trades to a DB or publish to Kafka — zero changes to the engine.
+
+### Advanced version (coming next)
+
+A separate repository will implement the advanced version using:
+- **LMAX Disruptor** — lock-free ring buffer, single-threaded matching per instrument
+- **Array-based price levels** — O(1) insert/cancel instead of `TreeMap`
+- **Kafka** — trades published as events, consumed by downstream systems
+- **Write-ahead log** — append-only persistence, not JPA
+
+See [`docs/ORDER_MATCHING_ENGINE_PRD.md`](docs/ORDER_MATCHING_ENGINE_PRD.md) for the full design document.

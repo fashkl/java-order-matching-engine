@@ -174,14 +174,25 @@ A financial order matching engine built in Java 21 with Spring Boot. Implements 
 
 ---
 
-### Phase 6 — Persistence *(deferred)*
+### Phase 6 — Persistence *(intentionally deferred)*
 
-**Goal:** Survive restarts and support trade history queries.
+**Decision:** Persistence is deferred to the advanced Disruptor version. Adding synchronous DB writes to the matching hot path contradicts the engine's core design principle — the lock must protect only state mutation, not I/O.
 
-**Design:**
-- Spring Data JPA entities for `Order` and `Trade`.
-- On startup: query open orders from DB and rebuild in-memory `OrderBook` per instrument.
-- On match: write `Trade` and update `Order.remainingQty` / `Order.status` in a single transaction.
+**The correct patterns for each concern:**
+
+| Concern | Right approach |
+|---------|---------------|
+| Trade durability | `TradePersistenceListener` reacting to `TradeExecutedEvent` `@Async` — fire-and-forget, no lock involvement |
+| Trade history queries | Kafka topic consumed by a read model (CQRS) |
+| Order state durability | Write-ahead log in the advanced engine, not JPA |
+| Port swap demo | Implement `OrderRepositoryPort` with JPA — `OrderApplicationService` unchanged |
+
+**Why not JPA on the hot path:**
+- Every `submit()` call would block inside the lock waiting for a DB write
+- JPA introduces GC pressure (object mapping) on the latency-critical path
+- Relational DBs are not the right tool for append-only trade event streams
+
+**Advanced version** will address persistence correctly with LMAX Disruptor + Kafka + WAL.
 
 **Invariants:**
 - Trade write and order status update must be atomic (same transaction).
