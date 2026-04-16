@@ -75,6 +75,12 @@ public class MatchingEngine {
         while (incoming.isOpen() && !level.isEmpty()) {
             Order resting = level.peekFirst();
 
+            // Defensive guard: skip orders that were cancelled after entering the level
+            if (!resting.isOpen()) {
+                level.pollFirst();
+                continue;
+            }
+
             BigDecimal fillQty = incoming.getRemainingQty()
                     .min(resting.getRemainingQty());
 

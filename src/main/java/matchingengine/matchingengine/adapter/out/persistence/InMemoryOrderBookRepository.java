@@ -3,13 +3,13 @@ package matchingengine.matchingengine.adapter.out.persistence;
 import matchingengine.matchingengine.application.port.out.OrderBookRepositoryPort;
 import matchingengine.matchingengine.domain.OrderBook;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class InMemoryOrderBookRepository implements OrderBookRepositoryPort {
 
-    private final Map<String, OrderBook> store = new HashMap<>();
+    private final Map<String, OrderBook> store = new ConcurrentHashMap<>();
 
     @Override
     public OrderBook findOrCreate(String instrument) {
