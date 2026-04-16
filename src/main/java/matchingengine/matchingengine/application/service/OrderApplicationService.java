@@ -9,6 +9,8 @@ import matchingengine.matchingengine.domain.MatchingEngine;
 import matchingengine.matchingengine.domain.Order;
 import matchingengine.matchingengine.domain.OrderBook;
 import matchingengine.matchingengine.domain.Trade;
+import matchingengine.matchingengine.domain.events.TradeExecutedEvent;
+import matchingengine.matchingengine.domain.ports.DomainEventPublisher;
 import matchingengine.matchingengine.exception.OrderNotFoundException;
 
 import java.util.List;
@@ -22,29 +24,38 @@ public class OrderApplicationService implements SubmitOrderUseCase, CancelOrderU
     private final MatchingEngine matchingEngine;
     private final OrderRepositoryPort orderRepository;
     private final OrderBookRepositoryPort orderBookRepository;
+    private final DomainEventPublisher eventPublisher;
 
-    // One lock per instrument — different instruments never contend on each other
     private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     public OrderApplicationService(MatchingEngine matchingEngine,
                                    OrderRepositoryPort orderRepository,
-                                   OrderBookRepositoryPort orderBookRepository) {
+                                   OrderBookRepositoryPort orderBookRepository,
+                                   DomainEventPublisher eventPublisher) {
         this.matchingEngine = matchingEngine;
         this.orderRepository = orderRepository;
         this.orderBookRepository = orderBookRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
     public List<Trade> submit(Order order) {
+        List<Trade> trades;
+
         ReentrantLock lock = lockFor(order.getInstrument());
         lock.lock();
         try {
             orderRepository.save(order);
             OrderBook book = orderBookRepository.findOrCreate(order.getInstrument());
-            return matchingEngine.match(order, book);
+            trades = matchingEngine.match(order, book);
         } finally {
             lock.unlock();
         }
+
+        // Publish events after releasing the lock — no I/O inside the critical section
+        trades.forEach(trade -> eventPublisher.publish(new TradeExecutedEvent(trade)));
+
+        return trades;
     }
 
     @Override

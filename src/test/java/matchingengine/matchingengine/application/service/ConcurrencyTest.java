@@ -7,10 +7,13 @@ import matchingengine.matchingengine.domain.Order;
 import matchingengine.matchingengine.domain.OrderStatus;
 import matchingengine.matchingengine.domain.Side;
 import matchingengine.matchingengine.domain.Trade;
+import matchingengine.matchingengine.domain.ports.DomainEventPublisher;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+
+import static org.mockito.Mockito.mock;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -34,7 +37,8 @@ class ConcurrencyTest {
         service = new OrderApplicationService(
                 new MatchingEngine(),
                 new InMemoryOrderRepository(),
-                bookRepository
+                bookRepository,
+                mock(DomainEventPublisher.class)
         );
     }
 

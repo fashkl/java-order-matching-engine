@@ -2,10 +2,12 @@ package matchingengine.matchingengine.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
+import matchingengine.matchingengine.adapter.out.eventbus.SpringDomainEventPublisher;
 import matchingengine.matchingengine.adapter.out.persistence.InMemoryOrderBookRepository;
 import matchingengine.matchingengine.adapter.out.persistence.InMemoryOrderRepository;
 import matchingengine.matchingengine.application.service.OrderApplicationService;
 import matchingengine.matchingengine.domain.MatchingEngine;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -37,11 +39,17 @@ public class AppConfig {
     }
 
     @Bean
-    public OrderApplicationService orderApplicationService() {
+    public SpringDomainEventPublisher domainEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
+        return new SpringDomainEventPublisher(applicationEventPublisher);
+    }
+
+    @Bean
+    public OrderApplicationService orderApplicationService(SpringDomainEventPublisher domainEventPublisher) {
         return new OrderApplicationService(
                 matchingEngine(),
                 orderRepository(),
-                orderBookRepository()
+                orderBookRepository(),
+                domainEventPublisher
         );
     }
 }

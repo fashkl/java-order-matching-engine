@@ -7,6 +7,7 @@ import matchingengine.matchingengine.domain.Order;
 import matchingengine.matchingengine.domain.OrderStatus;
 import matchingengine.matchingengine.domain.Side;
 import matchingengine.matchingengine.domain.Trade;
+import matchingengine.matchingengine.domain.ports.DomainEventPublisher;
 import matchingengine.matchingengine.exception.OrderNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class OrderApplicationServiceTest {
 
@@ -28,7 +30,8 @@ class OrderApplicationServiceTest {
         service = new OrderApplicationService(
                 new MatchingEngine(),
                 new InMemoryOrderRepository(),
-                bookRepository
+                bookRepository,
+                mock(DomainEventPublisher.class)
         );
     }
 
